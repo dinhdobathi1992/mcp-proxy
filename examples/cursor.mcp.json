@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "proxy": {
+      "type": "stdio",
+      "command": "mcp-proxy",
+      "args": ["--config", "/absolute/path/to/servers.json"],
+      "env": {}
+    }
+  }
+}

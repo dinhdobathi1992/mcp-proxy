@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "echo": {
+      "command": "python3",
+      "args": [
+        "tests/fixtures/backend_stdio.py"
+      ],
+      "env": {}
+    },
+    "math": {
+      "url": "http://127.0.0.1:9001/mcp",
+      "transport": "http"
+    }
+  }
+}

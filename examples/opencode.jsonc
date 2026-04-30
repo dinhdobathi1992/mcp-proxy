@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "proxy": {
+      "type": "local",
+      "command": ["mcp-proxy", "--config", "/absolute/path/to/servers.json"],
+      "enabled": true
+    }
+  }
+}
