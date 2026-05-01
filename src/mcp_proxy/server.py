@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,8 @@ def run_proxy(
     health_interval: float = 30.0,
     tls_cert: str | None = None,
     tls_key: str | None = None,
+    ui_mode: str = "off",
+    ui_port: int = 8080,
 ) -> int:
     """Run the proxy using the selected front transport."""
 
@@ -47,6 +50,9 @@ def run_proxy(
         strict_startup=strict_startup,
         watch=watch,
         health_interval=health_interval,
+        ui_mode=ui_mode,
+        ui_status_path=f"/tmp/mcp-proxy-status-{os.getpid()}.dat",
+        ui_command_path=f"/tmp/mcp-proxy-commands-{os.getpid()}.jsonl",
     )
     mgr.start()
 

@@ -112,6 +112,18 @@ def build_parser() -> argparse.ArgumentParser:
         default="text",
         help="Log format: text or json.",
     )
+    parser.add_argument(
+        "--ui-mode",
+        choices=("off", "default", "advanced"),
+        default="off",
+        help="Management UI mode: off, default (read-only), or advanced (full admin).",
+    )
+    parser.add_argument(
+        "--ui-port",
+        type=int,
+        default=8080,
+        help="Management UI server port.",
+    )
     return parser
 
 
@@ -145,6 +157,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             health_interval=args.health_interval,
             tls_cert=args.tls_cert,
             tls_key=args.tls_key,
+            ui_mode=args.ui_mode,
+            ui_port=args.ui_port,
         )
     except ConfigError as exc:
         LOGGER.error("%s", exc)
