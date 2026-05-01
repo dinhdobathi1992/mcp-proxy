@@ -14,9 +14,8 @@ from .validate import validate_front_transport
 LOGGER = get_logger("server")
 
 
-def _start_ui_server(ui_port: int, status_path: str) -> subprocess.Popen | None:
+def _start_ui_server(ui_port: int, status_path: str, command_path: str | None = None) -> subprocess.Popen | None:
     """Start the UI server as a child process."""
-    # Find the Vue build output
     ui_dir = Path(__file__).parent.parent.parent / "ui" / "dist"
     try:
         cmd = [
@@ -26,6 +25,8 @@ def _start_ui_server(ui_port: int, status_path: str) -> subprocess.Popen | None:
         ]
         if ui_dir.exists():
             cmd.extend(["--ui-dir", str(ui_dir)])
+        if command_path:
+            cmd.extend(["--command-path", command_path])
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
@@ -88,7 +89,8 @@ def run_proxy(
 
     ui_proc = None
     if ui_mode != "off":
-        ui_proc = _start_ui_server(ui_port, mgr._ui_status_path)
+        command_path = str(mgr._ui_command_path) if ui_mode == "advanced" else None
+        ui_proc = _start_ui_server(ui_port, str(mgr._ui_status_path), command_path)
 
     try:
         if front_transport == "stdio":
