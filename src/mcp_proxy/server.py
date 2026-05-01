@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +12,23 @@ from .logging import get_logger
 from .validate import validate_front_transport
 
 LOGGER = get_logger("server")
+
+
+def _start_ui_server(ui_port: int, status_path: str) -> subprocess.Popen | None:
+    """Start the UI server as a child process."""
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "mcp_proxy.ui_server",
+             "--port", str(ui_port),
+             "--status-path", status_path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+        LOGGER.info("UI server started on port %s (PID: %s)", ui_port, proc.pid)
+        return proc
+    except Exception as exc:
+        LOGGER.warning("Failed to start UI server: %s", exc)
+        return None
 
 
 def build_proxy(
@@ -60,25 +79,37 @@ def run_proxy(
     config = mgr.get_config()
     backend_names = ", ".join(backend.name for backend in config.backends)
 
-    if front_transport == "stdio":
+    ui_proc = None
+    if ui_mode != "off":
+        ui_proc = _start_ui_server(ui_port, mgr._ui_status_path)
+
+    try:
+        if front_transport == "stdio":
+            LOGGER.info(
+                "Starting MCP proxy via stdio with %d backend(s): %s",
+                len(config.backends),
+                backend_names,
+            )
+            proxy.run(transport="stdio")
+            return 0
+
         LOGGER.info(
-            "Starting MCP proxy via stdio with %d backend(s): %s",
+            "Starting MCP proxy via %s on %s:%s with %d backend(s): %s",
+            "https" if tls_cert else "http",
+            host,
+            port,
             len(config.backends),
             backend_names,
         )
-        proxy.run(transport="stdio")
+        if tls_cert and tls_key:
+            proxy.run(transport="http", host=host, port=port, ssl_certfile=tls_cert, ssl_keyfile=tls_key)
+        else:
+            proxy.run(transport="http", host=host, port=port)
         return 0
-
-    LOGGER.info(
-        "Starting MCP proxy via %s on %s:%s with %d backend(s): %s",
-        "https" if tls_cert else "http",
-        host,
-        port,
-        len(config.backends),
-        backend_names,
-    )
-    if tls_cert and tls_key:
-        proxy.run(transport="http", host=host, port=port, ssl_certfile=tls_cert, ssl_keyfile=tls_key)
-    else:
-        proxy.run(transport="http", host=host, port=port)
-    return 0
+    finally:
+        if ui_proc:
+            ui_proc.terminate()
+            try:
+                ui_proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                ui_proc.kill()

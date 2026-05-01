@@ -90,3 +90,15 @@ class UIServer:
         finally:
             await ws.close()
         return ws
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="MCP Proxy UI Server")
+    parser.add_argument("--port", type=int, default=8080, help="Port to listen on")
+    parser.add_argument("--status-path", required=True, help="Path to status file")
+    args = parser.parse_args()
+
+    server = UIServer(status_path=args.status_path, port=args.port)
+    asyncio.run(server.run())
