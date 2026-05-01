@@ -64,11 +64,15 @@ def run_proxy(
         return 0
 
     LOGGER.info(
-        "Starting MCP proxy via http on %s:%s with %d backend(s): %s",
+        "Starting MCP proxy via %s on %s:%s with %d backend(s): %s",
+        "https" if tls_cert else "http",
         host,
         port,
         len(config.backends),
         backend_names,
     )
-    proxy.run(transport="http", host=host, port=port)
+    if tls_cert and tls_key:
+        proxy.run(transport="http", host=host, port=port, ssl_certfile=tls_cert, ssl_keyfile=tls_key)
+    else:
+        proxy.run(transport="http", host=host, port=port)
     return 0
