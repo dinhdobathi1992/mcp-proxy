@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import signal
 from pathlib import Path
 from typing import Sequence
 
@@ -10,6 +11,16 @@ from .server import run_proxy
 from .validate import ConfigError
 
 LOGGER = get_logger("cli")
+
+
+def _setup_signal_handlers() -> None:
+    """Set up graceful shutdown on SIGTERM."""
+
+    def _handler(signum: int, frame: object) -> None:
+        LOGGER.info("Received signal %s, shutting down...", signum)
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, _handler)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -72,6 +83,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     configure_logging(args.log_level)
+    _setup_signal_handlers()
 
     try:
         if args.check:

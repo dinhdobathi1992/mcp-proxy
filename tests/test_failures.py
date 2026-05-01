@@ -175,3 +175,21 @@ class TestCliValidate:
         # Logged to stderr, not stdout
         captured = capsys.readouterr()
         assert captured.out == ""
+
+
+# ---------------------------------------------------------------------------
+# Graceful shutdown
+# ---------------------------------------------------------------------------
+
+
+class TestGracefulShutdown:
+    def test_sigint_returns_130(self, stdio_config, monkeypatch):
+        """Verify SIGINT is caught and returns exit code 130."""
+        from mcp_proxy.cli import main
+
+        def raise_keyboard_interrupt(*args, **kwargs):
+            raise KeyboardInterrupt()
+
+        monkeypatch.setattr("mcp_proxy.cli.run_proxy", raise_keyboard_interrupt)
+        result = main(["--config", str(stdio_config)])
+        assert result == 130
