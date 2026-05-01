@@ -158,7 +158,12 @@ class TestUnreachableHttpBackend:
             return await proxy.list_tools()
 
         tools = asyncio.run(call())
-        assert tools == [], f"Expected empty tool list for unreachable backend, got: {tools}"
+        tool_names = [t.name for t in tools]
+        # Management tools are always present
+        assert "proxy_list_backends" in tool_names
+        # Backend tools should NOT be present when backend is unreachable
+        backend_tools = [n for n in tool_names if not n.startswith("proxy_")]
+        assert backend_tools == [], f"Expected no backend tools for unreachable backend, got: {backend_tools}"
 
 
 # ---------------------------------------------------------------------------

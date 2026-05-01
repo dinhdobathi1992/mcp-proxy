@@ -94,6 +94,7 @@ class ProxyLifecycleManager:
             from fastmcp.server import create_proxy
 
             self._proxy = create_proxy(new_config.data, name=self._name)
+            self._register_management_tools(self._proxy)
             self._config = new_config
 
         self._start_health_checker()
@@ -103,6 +104,7 @@ class ProxyLifecycleManager:
 
         config = load_config(self._config_path, strict_startup=self._strict_startup)
         proxy = create_proxy(config.data, name=self._name)
+        self._register_management_tools(proxy)
 
         with self._lock:
             self._proxy = proxy
@@ -110,6 +112,76 @@ class ProxyLifecycleManager:
 
         backend_names = ", ".join(b.name for b in config.backends)
         LOGGER.info("Proxy started with %d backend(s): %s", len(config.backends), backend_names)
+
+    def _register_management_tools(self, proxy: Any) -> None:
+        """Register proxy_* management tools on the FastMCP proxy."""
+        from .management import ManagementTools
+
+        tools = ManagementTools(self)
+
+        @proxy.tool()
+        async def proxy_list_backends() -> str:
+            """List all backends with their health status."""
+            import json
+            return json.dumps(tools.list_backends(), indent=2)
+
+        @proxy.tool()
+        async def proxy_add_backend(
+            name: str,
+            command: str = "",
+            url: str = "",
+            args: list[str] | None = None,
+            env: dict[str, str] | None = None,
+            headers: dict[str, str] | None = None,
+            persist: bool = False,
+        ) -> str:
+            """Add a new backend at runtime."""
+            import json
+            return json.dumps(tools.add_backend(
+                name=name,
+                command=command or None,
+                url=url or None,
+                args=args,
+                env=env,
+                headers=headers,
+                persist=persist,
+            ), indent=2)
+
+        @proxy.tool()
+        async def proxy_remove_backend(name: str, persist: bool = False) -> str:
+            """Remove a backend at runtime."""
+            import json
+            return json.dumps(tools.remove_backend(name, persist), indent=2)
+
+        @proxy.tool()
+        async def proxy_enable_backend(name: str, persist: bool = False) -> str:
+            """Enable a disabled backend."""
+            import json
+            return json.dumps(tools.enable_backend(name, persist), indent=2)
+
+        @proxy.tool()
+        async def proxy_disable_backend(name: str, persist: bool = False) -> str:
+            """Disable an enabled backend."""
+            import json
+            return json.dumps(tools.disable_backend(name, persist), indent=2)
+
+        @proxy.tool()
+        async def proxy_reload_config() -> str:
+            """Force config reload from disk."""
+            import json
+            return json.dumps(tools.reload_config(), indent=2)
+
+        @proxy.tool()
+        async def proxy_health_status() -> str:
+            """Get health status of all backends."""
+            import json
+            return json.dumps(tools.health_status(), indent=2)
+
+        @proxy.tool()
+        async def proxy_metrics() -> str:
+            """Get proxy request metrics."""
+            import json
+            return json.dumps(tools.metrics(), indent=2)
 
     def _start_health_checker(self) -> None:
         if self._health_checker:
