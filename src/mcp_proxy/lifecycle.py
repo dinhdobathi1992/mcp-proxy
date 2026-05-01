@@ -29,6 +29,10 @@ class ProxyLifecycleManager:
         health_interval: float = 30.0,
         max_retries: int = 3,
         retry_backoff: float = 0.1,
+        ui_mode: str = "off",
+        ui_status_path: str | Path | None = None,
+        ui_command_path: str | Path | None = None,
+        ui_update_interval: float = 5.0,
     ) -> None:
         self._config_path = Path(config_path)
         self._name = name
@@ -45,17 +49,36 @@ class ProxyLifecycleManager:
         self._stop_event = threading.Event()
         self._metrics = Metrics()
 
+        self._ui_mode = ui_mode
+        self._ui_status_path = ui_status_path
+        self._ui_command_path = ui_command_path
+        self._ui_update_interval = ui_update_interval
+        self._ui_writer: Any = None
+        self._ui_reader: Any = None
+        self._ui_thread: threading.Thread | None = None
+        self._ui_command_thread: threading.Thread | None = None
+
     def start(self) -> None:
         self._build_proxy()
         self._start_health_checker()
         if self._watch:
             self._start_config_watcher()
+        if self._ui_mode != "off":
+            self._start_ui_writer()
+        if self._ui_mode == "advanced":
+            self._start_ui_reader()
 
     def stop(self) -> None:
         self._stop_event.set()
         if self._watcher_thread:
             self._watcher_thread.join(timeout=5.0)
             self._watcher_thread = None
+        if self._ui_thread:
+            self._ui_thread.join(timeout=5.0)
+            self._ui_thread = None
+        if self._ui_command_thread:
+            self._ui_command_thread.join(timeout=5.0)
+            self._ui_command_thread = None
         if self._health_checker:
             self._health_checker.stop()
             self._health_checker = None
@@ -204,6 +227,100 @@ class ProxyLifecycleManager:
 
     def _on_health_change(self, backend_name: str, status) -> None:
         LOGGER.info("Backend '%s' health changed to %s", backend_name, status.value)
+
+    def _start_ui_writer(self) -> None:
+        from .ui_writer import StatusWriter
+
+        self._ui_writer = StatusWriter(self._ui_status_path)
+        self._ui_thread = threading.Thread(target=self._ui_write_loop, daemon=True)
+        self._ui_thread.start()
+
+    def _ui_write_loop(self) -> None:
+        while not self._stop_event.is_set():
+            self._write_ui_status()
+            self._stop_event.wait(self._ui_update_interval)
+
+    def _write_ui_status(self) -> None:
+        if not self._ui_writer:
+            return
+        config = self.get_config()
+        metrics = self._metrics.get_metrics()
+        health = self._health_checker
+
+        backends = []
+        if config:
+            for b in config.backends:
+                status = "unknown"
+                if health:
+                    status = health.get_status(b.name).value
+                backends.append({
+                    "name": b.name,
+                    "transport": b.transport,
+                    "enabled": b.enabled,
+                    "health": status,
+                    "requests": metrics.get("requests_per_backend", {}).get(b.name, 0),
+                    "errors": 0,
+                    "latency_p50": metrics.get("backend_latency_ms", {}).get(b.name, {}).get("p50", 0),
+                    "latency_p95": metrics.get("backend_latency_ms", {}).get(b.name, {}).get("p95", 0),
+                    "latency_p99": metrics.get("backend_latency_ms", {}).get(b.name, {}).get("p99", 0),
+                })
+
+        from datetime import datetime, timezone
+
+        self._ui_writer.write({
+            "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+            "proxy_name": self._name,
+            "backends": backends,
+            "totals": {
+                "requests": metrics.get("requests_total", 0),
+                "errors": metrics.get("errors_total", 0),
+                "backends": len(backends),
+                "healthy": sum(1 for b in backends if b["health"] == "healthy"),
+                "unhealthy": sum(1 for b in backends if b["health"] == "unhealthy"),
+            },
+        })
+
+    def _start_ui_reader(self) -> None:
+        from .ui_reader import CommandReader
+
+        self._ui_reader = CommandReader(self._ui_command_path)
+        self._ui_command_thread = threading.Thread(target=self._ui_command_loop, daemon=True)
+        self._ui_command_thread.start()
+
+    def _ui_command_loop(self) -> None:
+        while not self._stop_event.is_set():
+            self._process_ui_commands()
+            self._stop_event.wait(self._ui_update_interval)
+
+    def _process_ui_commands(self) -> None:
+        if not self._ui_reader:
+            return
+        commands = self._ui_reader.read_commands()
+        for cmd in commands:
+            try:
+                self._execute_ui_command(cmd)
+            except Exception as exc:
+                LOGGER.warning("Failed to execute UI command %s: %s", cmd.get("id"), exc)
+
+    def _execute_ui_command(self, cmd: dict) -> None:
+        from .management import ManagementTools
+
+        tools = ManagementTools(self)
+        action = cmd.get("action")
+        args = cmd.get("args", {})
+
+        if action == "enable_backend":
+            tools.enable_backend(args["name"])
+        elif action == "disable_backend":
+            tools.disable_backend(args["name"])
+        elif action == "reload_config":
+            tools.reload_config()
+        elif action == "add_backend":
+            tools.add_backend(**args)
+        elif action == "remove_backend":
+            tools.remove_backend(args["name"])
+        else:
+            LOGGER.warning("Unknown UI command action: %s", action)
 
     def _start_config_watcher(self) -> None:
         self._watcher_thread = threading.Thread(
