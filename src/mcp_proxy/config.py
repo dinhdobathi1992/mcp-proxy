@@ -15,6 +15,7 @@ class BackendConfig:
     name: str
     transport: str
     enabled: bool
+    cwd: str | None
     raw: dict[str, Any]
 
 
@@ -54,11 +55,11 @@ def load_config(path: str | Path, *, strict_startup: bool = True) -> ProxyConfig
     )
     all_backends = normalized.pop("_all_backends")
     backends = tuple(
-        BackendConfig(name=name, transport=backend["transport"], enabled=True, raw=backend)
+        BackendConfig(name=name, transport=backend["transport"], enabled=True, cwd=backend.get("cwd"), raw=backend)
         for name, backend in normalized["mcpServers"].items()
     )
     disabled_backends = tuple(
-        BackendConfig(name=name, transport=backend.get("transport", ""), enabled=False, raw=backend)
+        BackendConfig(name=name, transport=backend.get("transport", ""), enabled=False, cwd=backend.get("cwd"), raw=backend)
         for name, backend in all_backends.items()
         if not backend.get("enabled", True)
     )

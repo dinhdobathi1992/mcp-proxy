@@ -2,19 +2,17 @@
 
 Thin FastMCP-based proxy that exposes multiple downstream MCP servers as one front MCP server.
 
-This repo currently contains the Milestone 1 scaffold:
+Core features:
 
 - package layout
-- config loader
-- validation layer
+- config loader with full validation
+- `cwd` support for stdio backends
 - stderr-only logging
 - CLI entrypoint
 - FastMCP proxy startup wiring
 - client compatibility docs and config examples
 
 Python 3.10+ is the intended runtime baseline.
-
-The implementation blueprint lives in `REPO_PLAN.md`.
 
 ## Goals
 
