@@ -10,6 +10,7 @@ from .config import ProxyConfig, load_config
 from .health import HealthChecker
 from .logging import get_logger
 from .metrics import Metrics
+from .retry import RetryPolicy
 from .validate import ConfigError
 
 LOGGER = get_logger("lifecycle")
@@ -26,12 +27,15 @@ class ProxyLifecycleManager:
         strict_startup: bool = True,
         watch: bool = False,
         health_interval: float = 30.0,
+        max_retries: int = 3,
+        retry_backoff: float = 0.1,
     ) -> None:
         self._config_path = Path(config_path)
         self._name = name
         self._strict_startup = strict_startup
         self._watch = watch
         self._health_interval = health_interval
+        self._retry_policy = RetryPolicy(max_retries=max_retries, initial_backoff=retry_backoff)
 
         self._lock = threading.Lock()
         self._proxy: Any = None
