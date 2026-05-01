@@ -17,7 +17,16 @@ Python 3.10+ is the intended runtime baseline.
 - **Graceful shutdown** — clean SIGINT/SIGTERM handling
 - **TLS support** — HTTPS with `--tls-cert` and `--tls-key`
 
+## Installation
+
+```bash
+cd /path/to/mcp-proxy
+uv sync
+```
+
 ## Quickstart
+
+Create a `servers.json` config with your downstream MCP servers:
 
 ```json
 {
@@ -34,21 +43,29 @@ Python 3.10+ is the intended runtime baseline.
 }
 ```
 
+Run commands from the project directory using `uv run`:
+
 ```bash
 # Validate config
-mcp-proxy --config servers.json --check
+uv run mcp-proxy --config servers.json --check
+
+# Run as stdio server (for Claude Code, Cursor, OpenCode)
+uv run mcp-proxy --config servers.json
 
 # Run with hot-reload
-mcp-proxy --config servers.json --watch
+uv run mcp-proxy --config servers.json --watch
+
+# Run as HTTP server
+uv run mcp-proxy --config servers.json --transport http --port 8000
 
 # Run as HTTP server with auth
-mcp-proxy --config servers.json --transport http --auth-api-key mysecret
+uv run mcp-proxy --config servers.json --transport http --auth-api-key mysecret
 
 # Run with JSON logging
-mcp-proxy --config servers.json --log-format json
+uv run mcp-proxy --config servers.json --log-format json
 
 # Run with TLS
-mcp-proxy --config servers.json --transport http --tls-cert cert.pem --tls-key key.pem
+uv run mcp-proxy --config servers.json --transport http --tls-cert cert.pem --tls-key key.pem
 ```
 
 ## CLI Options
@@ -82,6 +99,31 @@ When running, the proxy exposes these MCP tools:
 - `proxy_reload_config` — force config reload
 - `proxy_health_status` — get health status
 - `proxy_metrics` — get request metrics
+
+## Client Configuration
+
+The proxy uses `.venv/bin/mcp-proxy` as the executable. Use the full path in your client config:
+
+```json
+{
+  "mcpServers": {
+    "proxy": {
+      "command": "/absolute/path/to/mcp-proxy/.venv/bin/mcp-proxy",
+      "args": ["--config", "/absolute/path/to/servers.json"]
+    }
+  }
+}
+```
+
+Or use the install script to auto-configure clients:
+
+```bash
+./scripts/install-mcp-proxy.sh --opencode
+./scripts/install-mcp-proxy.sh --claude
+./scripts/install-mcp-proxy.sh --all
+```
+
+See `examples/` for client-specific config samples and `docs/client-compatibility.md` for detailed notes.
 
 ## Compatibility Notes
 

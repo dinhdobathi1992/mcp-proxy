@@ -16,6 +16,9 @@
 #   --remove    Remove the mcp-proxy entry instead of adding it
 #
 # The script is idempotent: running it twice does not duplicate entries.
+#
+# Note: This script requires bash. If you use fish shell, run it with:
+#   bash ./scripts/install-mcp-proxy.sh --opencode
 
 set -euo pipefail
 

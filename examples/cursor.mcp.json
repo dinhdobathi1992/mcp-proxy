@@ -2,7 +2,7 @@
   "mcpServers": {
     "proxy": {
       "type": "stdio",
-      "command": "mcp-proxy",
+      "command": "/absolute/path/to/mcp-proxy/.venv/bin/mcp-proxy",
       "args": ["--config", "/absolute/path/to/servers.json"],
       "env": {}
     }
