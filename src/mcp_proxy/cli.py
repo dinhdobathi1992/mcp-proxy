@@ -74,6 +74,44 @@ def build_parser() -> argparse.ArgumentParser:
         default=True,
         help="Fail fast for startup checks such as missing local executables.",
     )
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help="Watch config file for changes and hot-reload.",
+    )
+    parser.add_argument(
+        "--health-interval",
+        type=float,
+        default=30.0,
+        help="Health check interval in seconds.",
+    )
+    parser.add_argument(
+        "--auth-api-key",
+        default=None,
+        help="API key for HTTP front authentication.",
+    )
+    parser.add_argument(
+        "--rate-limit",
+        type=int,
+        default=100,
+        help="Requests per minute per IP (HTTP only).",
+    )
+    parser.add_argument(
+        "--tls-cert",
+        default=None,
+        help="TLS certificate path for HTTPS.",
+    )
+    parser.add_argument(
+        "--tls-key",
+        default=None,
+        help="TLS key path for HTTPS.",
+    )
+    parser.add_argument(
+        "--log-format",
+        choices=("text", "json"),
+        default="text",
+        help="Log format: text or json.",
+    )
     return parser
 
 
@@ -82,7 +120,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     parser = build_parser()
     args = parser.parse_args(argv)
-    configure_logging(args.log_level)
+    configure_logging(args.log_level, log_format=args.log_format)
     _setup_signal_handlers()
 
     try:
@@ -103,6 +141,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             port=args.port,
             name=args.name,
             strict_startup=args.strict_startup,
+            watch=args.watch,
+            health_interval=args.health_interval,
+            tls_cert=args.tls_cert,
+            tls_key=args.tls_key,
         )
     except ConfigError as exc:
         LOGGER.error("%s", exc)

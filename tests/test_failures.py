@@ -193,3 +193,40 @@ class TestGracefulShutdown:
         monkeypatch.setattr("mcp_proxy.cli.run_proxy", raise_keyboard_interrupt)
         result = main(["--config", str(stdio_config)])
         assert result == 130
+
+
+# ---------------------------------------------------------------------------
+# New CLI flags
+# ---------------------------------------------------------------------------
+
+
+class TestNewCliFlags:
+    def test_watch_flag_accepted(self, stdio_config):
+        from mcp_proxy.cli import build_parser
+        parser = build_parser()
+        args = parser.parse_args(["--config", str(stdio_config), "--watch"])
+        assert args.watch is True
+
+    def test_health_interval_flag(self, stdio_config):
+        from mcp_proxy.cli import build_parser
+        parser = build_parser()
+        args = parser.parse_args(["--config", str(stdio_config), "--health-interval", "10"])
+        assert args.health_interval == 10.0
+
+    def test_log_format_json(self, stdio_config):
+        from mcp_proxy.cli import build_parser
+        parser = build_parser()
+        args = parser.parse_args(["--config", str(stdio_config), "--log-format", "json"])
+        assert args.log_format == "json"
+
+    def test_auth_api_key_flag(self, stdio_config):
+        from mcp_proxy.cli import build_parser
+        parser = build_parser()
+        args = parser.parse_args(["--config", str(stdio_config), "--auth-api-key", "secret"])
+        assert args.auth_api_key == "secret"
+
+    def test_rate_limit_flag(self, stdio_config):
+        from mcp_proxy.cli import build_parser
+        parser = build_parser()
+        args = parser.parse_args(["--config", str(stdio_config), "--rate-limit", "50"])
+        assert args.rate_limit == 50

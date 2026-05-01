@@ -35,6 +35,8 @@ def run_proxy(
     strict_startup: bool = True,
     watch: bool = False,
     health_interval: float = 30.0,
+    tls_cert: str | None = None,
+    tls_key: str | None = None,
 ) -> int:
     """Run the proxy using the selected front transport."""
 
