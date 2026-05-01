@@ -87,6 +87,8 @@ uv run mcp-proxy --config servers.json --transport http --tls-cert cert.pem --tl
 | `--tls-cert` | — | TLS certificate path |
 | `--tls-key` | — | TLS key path |
 | `--strict-startup` | `true` | Fail fast for startup checks |
+| `--ui-mode` | `off` | Management UI mode: `off`, `default`, `advanced` |
+| `--ui-port` | `8080` | Management UI server port |
 
 ## Management Tools
 
@@ -99,6 +101,30 @@ When running, the proxy exposes these MCP tools:
 - `proxy_reload_config` — force config reload
 - `proxy_health_status` — get health status
 - `proxy_metrics` — get request metrics
+
+## Management UI
+
+The proxy includes an optional web-based management UI.
+
+```bash
+# Run with status dashboard (read-only)
+uv run mcp-proxy --config servers.json --ui-mode default --ui-port 8080
+
+# Run with full admin panel
+uv run mcp-proxy --config servers.json --ui-mode advanced --ui-port 8080
+```
+
+Open http://localhost:8080 in your browser.
+
+### UI Modes
+
+- `off` — No UI, zero overhead (default)
+- `default` — Status dashboard: backends, health, metrics
+- `advanced` — Full admin: toggle backends, reload config, add/remove
+
+### Performance
+
+The UI runs as a separate process. The proxy writes status to a file every 2s (< 0.01ms overhead). When UI is `off`, there is zero overhead.
 
 ## Client Configuration
 
