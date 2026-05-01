@@ -98,7 +98,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MCP Proxy UI Server")
     parser.add_argument("--port", type=int, default=8080, help="Port to listen on")
     parser.add_argument("--status-path", required=True, help="Path to status file")
+    parser.add_argument("--ui-dir", default=None, help="Path to Vue build output")
     args = parser.parse_args()
 
-    server = UIServer(status_path=args.status_path, port=args.port)
+    server = UIServer(status_path=args.status_path, port=args.port, ui_dir=args.ui_dir)
     asyncio.run(server.run())

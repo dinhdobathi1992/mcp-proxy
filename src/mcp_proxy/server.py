@@ -16,11 +16,18 @@ LOGGER = get_logger("server")
 
 def _start_ui_server(ui_port: int, status_path: str) -> subprocess.Popen | None:
     """Start the UI server as a child process."""
+    # Find the Vue build output
+    ui_dir = Path(__file__).parent.parent.parent / "ui" / "dist"
     try:
+        cmd = [
+            sys.executable, "-m", "mcp_proxy.ui_server",
+            "--port", str(ui_port),
+            "--status-path", status_path,
+        ]
+        if ui_dir.exists():
+            cmd.extend(["--ui-dir", str(ui_dir)])
         proc = subprocess.Popen(
-            [sys.executable, "-m", "mcp_proxy.ui_server",
-             "--port", str(ui_port),
-             "--status-path", status_path],
+            cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
         )
