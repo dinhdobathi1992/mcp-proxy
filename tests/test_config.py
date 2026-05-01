@@ -60,11 +60,11 @@ class TestNormalizeStdioBackend:
         )
         assert result["mcpServers"]["be"]["args"] == ["--foo", "bar"]
 
-    def test_extra_fields_preserved(self):
+    def test_extra_fields_preserved(self, tmp_path: Path):
         result = normalize_and_validate_config(
-            self._valid({"cwd": "/tmp", "keep_alive": True}), strict_startup=False
+            self._valid({"cwd": str(tmp_path), "keep_alive": True}), strict_startup=False
         )
-        assert result["mcpServers"]["be"]["cwd"] == "/tmp"
+        assert result["mcpServers"]["be"]["cwd"] == str(tmp_path)
         assert result["mcpServers"]["be"]["keep_alive"] is True
 
     def test_invalid_command_type(self):
@@ -155,6 +155,12 @@ class TestNormalizeHttpBackend:
             self._valid({"headers": {"Authorization": "Bearer token"}})
         )
         assert result["mcpServers"]["be"]["headers"] == {"Authorization": "Bearer token"}
+
+    def test_cwd_on_url_backend_preserved_without_validation(self):
+        result = normalize_and_validate_config(
+            self._valid({"cwd": "/some/arbitrary/path"})
+        )
+        assert result["mcpServers"]["be"]["cwd"] == "/some/arbitrary/path"
 
     def test_invalid_transport_value_rejected(self):
         with pytest.raises(ConfigError, match="unsupported transport"):

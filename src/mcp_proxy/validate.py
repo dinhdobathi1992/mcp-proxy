@@ -103,6 +103,20 @@ def normalize_backend_config(
             default_transport="stdio",
             allowed_transports={"stdio"},
         )
+        if "cwd" in normalized:
+            cwd = normalized["cwd"]
+            if not isinstance(cwd, str) or not cwd.strip():
+                raise ConfigError(
+                    f"Backend '{backend_name}' field 'cwd' must be a non-empty string."
+                )
+            cwd_path = Path(cwd).expanduser()
+            if not cwd_path.is_absolute():
+                cwd_path = (source_path.parent / cwd_path).resolve() if source_path else cwd_path.resolve()
+            if not cwd_path.is_dir():
+                raise ConfigError(
+                    f"Backend '{backend_name}' field 'cwd' must be an existing directory: {cwd_path}"
+                )
+            normalized["cwd"] = str(cwd_path)
         if strict_startup:
             _validate_command_exists(
                 normalized["command"],
@@ -122,21 +136,6 @@ def normalize_backend_config(
             default_transport="http",
             allowed_transports={"http", "sse"},
         )
-
-    if "cwd" in normalized:
-        cwd = normalized["cwd"]
-        if not isinstance(cwd, str) or not cwd.strip():
-            raise ConfigError(
-                f"Backend '{backend_name}' field 'cwd' must be a non-empty string."
-            )
-        cwd_path = Path(cwd).expanduser()
-        if not cwd_path.is_absolute():
-            cwd_path = (source_path.parent / cwd_path).resolve() if source_path else cwd_path.resolve()
-        if not cwd_path.is_dir():
-            raise ConfigError(
-                f"Backend '{backend_name}' field 'cwd' must be an existing directory: {cwd_path}"
-            )
-        normalized["cwd"] = str(cwd_path)
 
     _validate_optional_positive_int(backend_name, "timeout", normalized.get("timeout"))
     return normalized
