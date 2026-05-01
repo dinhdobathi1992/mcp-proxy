@@ -54,7 +54,10 @@ class UIServer:
         app.router.add_get("/api/status", self._handle_status)
         app.router.add_get("/ws", self._handle_websocket)
         if self._ui_dir and self._ui_dir.exists():
-            app.router.add_static("/", self._ui_dir)
+            # Serve index.html for root
+            app.router.add_get("/", self._handle_index)
+            # Serve all static files from the dist directory
+            app.router.add_get("/{path:.*}", self._handle_static)
 
         runner = web.AppRunner(app)
         await runner.setup()
@@ -64,6 +67,30 @@ class UIServer:
 
         # Keep running
         await asyncio.Event().wait()
+
+    async def _handle_index(self, request: Any) -> Any:
+        from aiohttp import web
+        index_path = self._ui_dir / "index.html"
+        return web.FileResponse(index_path)
+
+    async def _handle_static(self, request: Any) -> Any:
+        from aiohttp import web
+        path = request.match_info.get("path", "")
+        file_path = self._ui_dir / path
+        # Security: prevent directory traversal
+        try:
+            file_path = file_path.resolve()
+            if not str(file_path).startswith(str(self._ui_dir.resolve())):
+                return web.Response(status=403, text="Forbidden")
+        except (ValueError, OSError):
+            return web.Response(status=404, text="Not Found")
+        if file_path.exists() and file_path.is_file():
+            return web.FileResponse(file_path)
+        # Fallback to index.html for SPA routing
+        index_path = self._ui_dir / "index.html"
+        if index_path.exists():
+            return web.FileResponse(index_path)
+        return web.Response(status=404, text="Not Found")
 
     async def _handle_status(self, request: Any) -> Any:
         from aiohttp import web
