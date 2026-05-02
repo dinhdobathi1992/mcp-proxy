@@ -159,6 +159,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             tls_key=args.tls_key,
             ui_mode=args.ui_mode,
             ui_port=args.ui_port,
+            auth_api_key=args.auth_api_key,
+            rate_limit=args.rate_limit,
         )
     except ConfigError as exc:
         LOGGER.error("%s", exc)

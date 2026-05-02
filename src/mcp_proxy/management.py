@@ -24,7 +24,7 @@ class ManagementTools:
         if not config:
             return []
 
-        health = self._lifecycle._health_checker
+        health = self._lifecycle.get_health_checker()
         result = []
         for backend in config.backends:
             status = HealthStatus.UNKNOWN
@@ -114,7 +114,7 @@ class ManagementTools:
         }
 
     def health_status(self) -> dict[str, Any]:
-        health = self._lifecycle._health_checker
+        health = self._lifecycle.get_health_checker()
         if not health:
             return {"backends": {}}
 

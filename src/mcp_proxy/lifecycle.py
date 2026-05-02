@@ -96,6 +96,16 @@ class ProxyLifecycleManager:
     def get_metrics(self) -> Metrics:
         return self._metrics
 
+    def get_health_checker(self) -> HealthChecker | None:
+        with self._lock:
+            return self._health_checker
+
+    def get_ui_status_path(self) -> Path | None:
+        return Path(self._ui_status_path) if self._ui_status_path else None
+
+    def get_ui_command_path(self) -> Path | None:
+        return Path(self._ui_command_path) if self._ui_command_path else None
+
     def rebuild_proxy(self) -> None:
         try:
             new_config = load_config(

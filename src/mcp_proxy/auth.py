@@ -69,3 +69,57 @@ class RateLimiter:
                 q.popleft()
             if not q:
                 del self._requests[ip]
+
+
+class AuthMiddleware:
+    """ASGI middleware enforcing bearer-token auth on HTTP requests."""
+
+    def __init__(self, app, auth: APIKeyAuth) -> None:
+        self.app = app
+        self._auth = auth
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        header_value: str | None = None
+        for key, value in scope.get("headers", []):
+            if key == b"authorization":
+                header_value = value.decode("latin-1")
+                break
+        if not self._auth.validate(header_value):
+            await _send_text(send, 401, "Unauthorized")
+            return
+        await self.app(scope, receive, send)
+
+
+class RateLimitMiddleware:
+    """ASGI middleware enforcing per-IP rate limits."""
+
+    def __init__(self, app, limiter: RateLimiter) -> None:
+        self.app = app
+        self._limiter = limiter
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        client = scope.get("client")
+        client_ip = client[0] if client else "unknown"
+        if not self._limiter.allow(client_ip):
+            await _send_text(send, 429, "Too Many Requests")
+            return
+        await self.app(scope, receive, send)
+
+
+async def _send_text(send, status: int, body: str) -> None:
+    payload = body.encode("utf-8")
+    await send({
+        "type": "http.response.start",
+        "status": status,
+        "headers": [
+            (b"content-type", b"text/plain; charset=utf-8"),
+            (b"content-length", str(len(payload)).encode("ascii")),
+        ],
+    })
+    await send({"type": "http.response.body", "body": payload})

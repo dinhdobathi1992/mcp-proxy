@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import os
+import secrets
+import signal
 import subprocess
 import sys
+import tempfile
+import threading
 from pathlib import Path
 from typing import Any
 
+from .auth import APIKeyAuth, AuthMiddleware, RateLimiter, RateLimitMiddleware
 from .config import ProxyConfig
 from .lifecycle import ProxyLifecycleManager
 from .logging import get_logger
@@ -14,7 +19,46 @@ from .validate import validate_front_transport
 LOGGER = get_logger("server")
 
 
-def _start_ui_server(ui_port: int, status_path: str, command_path: str | None = None) -> subprocess.Popen | None:
+def _ui_runtime_dir() -> Path:
+    """Return a per-user runtime dir for UI IPC files."""
+    base = Path(tempfile.gettempdir()) / f"mcp-proxy-{os.getuid()}"
+    base.mkdir(mode=0o700, exist_ok=True)
+    try:
+        base.chmod(0o700)
+    except OSError:
+        pass
+    return base
+
+
+def _ui_paths() -> tuple[Path, Path]:
+    """Return unpredictable status + command paths under the runtime dir."""
+    base = _ui_runtime_dir()
+    token = secrets.token_hex(16)
+    return (
+        base / f"status-{token}.dat",
+        base / f"commands-{token}.jsonl",
+    )
+
+
+def _drain_stream(stream: Any, label: str) -> None:
+    """Read a child stream line-by-line and log each line at WARNING."""
+    try:
+        for raw in iter(stream.readline, b""):
+            if not raw:
+                break
+            LOGGER.warning("%s: %s", label, raw.rstrip(b"\n").decode("utf-8", "replace"))
+    except (ValueError, OSError):
+        pass
+    finally:
+        try:
+            stream.close()
+        except Exception:
+            pass
+
+
+def _start_ui_server(
+    ui_port: int, status_path: str, command_path: str | None = None
+) -> subprocess.Popen | None:
     """Start the UI server as a child process."""
     ui_dir = Path(__file__).parent.parent.parent / "ui" / "dist"
     try:
@@ -33,6 +77,11 @@ def _start_ui_server(ui_port: int, status_path: str, command_path: str | None = 
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
         )
+        threading.Thread(
+            target=_drain_stream,
+            args=(proc.stderr, "ui_server"),
+            daemon=True,
+        ).start()
         LOGGER.info("UI server started on port %s (PID: %s)", ui_port, proc.pid)
         return proc
     except Exception as exc:
@@ -54,6 +103,24 @@ def build_proxy(
     return mgr.get_proxy(), mgr.get_config()
 
 
+def _install_sighup(mgr: ProxyLifecycleManager) -> None:
+    """Install a SIGHUP handler that triggers a config reload."""
+    if not hasattr(signal, "SIGHUP"):
+        return
+
+    def _handler(signum: int, frame: object) -> None:
+        LOGGER.info("Received SIGHUP, reloading config...")
+        try:
+            mgr.rebuild_proxy()
+        except Exception as exc:
+            LOGGER.warning("SIGHUP reload failed: %s", exc)
+
+    try:
+        signal.signal(signal.SIGHUP, _handler)
+    except (ValueError, OSError):
+        pass
+
+
 def run_proxy(
     config_path: str | Path,
     *,
@@ -68,10 +135,13 @@ def run_proxy(
     tls_key: str | None = None,
     ui_mode: str = "off",
     ui_port: int = 8080,
+    auth_api_key: str | None = None,
+    rate_limit: int = 100,
 ) -> int:
     """Run the proxy using the selected front transport."""
 
     front_transport = validate_front_transport(transport)
+    status_path, command_path = _ui_paths()
     mgr = ProxyLifecycleManager(
         config_path,
         name=name,
@@ -79,10 +149,11 @@ def run_proxy(
         watch=watch,
         health_interval=health_interval,
         ui_mode=ui_mode,
-        ui_status_path=f"/tmp/mcp-proxy-status-{os.getpid()}.dat",
-        ui_command_path=f"/tmp/mcp-proxy-commands-{os.getpid()}.jsonl",
+        ui_status_path=str(status_path),
+        ui_command_path=str(command_path),
     )
     mgr.start()
+    _install_sighup(mgr)
 
     proxy = mgr.get_proxy()
     config = mgr.get_config()
@@ -90,8 +161,12 @@ def run_proxy(
 
     ui_proc = None
     if ui_mode != "off":
-        command_path = str(mgr._ui_command_path) if ui_mode == "advanced" else None
-        ui_proc = _start_ui_server(ui_port, str(mgr._ui_status_path), command_path)
+        ui_command_arg = (
+            str(mgr.get_ui_command_path()) if ui_mode == "advanced" else None
+        )
+        ui_proc = _start_ui_server(
+            ui_port, str(mgr.get_ui_status_path()), ui_command_arg
+        )
 
     try:
         if front_transport == "stdio":
@@ -111,10 +186,16 @@ def run_proxy(
             len(config.backends),
             backend_names,
         )
+        run_kwargs: dict[str, Any] = {"transport": "http", "host": host, "port": port}
         if tls_cert and tls_key:
-            proxy.run(transport="http", host=host, port=port, ssl_certfile=tls_cert, ssl_keyfile=tls_key)
-        else:
-            proxy.run(transport="http", host=host, port=port)
+            run_kwargs["ssl_certfile"] = tls_cert
+            run_kwargs["ssl_keyfile"] = tls_key
+
+        middleware = _build_http_middleware(auth_api_key, rate_limit)
+        if middleware:
+            run_kwargs["middleware"] = middleware
+
+        proxy.run(**run_kwargs)
         return 0
     finally:
         if ui_proc:
@@ -123,3 +204,20 @@ def run_proxy(
                 ui_proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 ui_proc.kill()
+        mgr.stop()
+
+
+def _build_http_middleware(
+    auth_api_key: str | None, rate_limit: int
+) -> list[Any]:
+    """Build the Starlette middleware stack for the front HTTP transport."""
+    from starlette.middleware import Middleware
+
+    layers: list[Any] = []
+    if auth_api_key:
+        layers.append(Middleware(AuthMiddleware, auth=APIKeyAuth(auth_api_key)))
+    if rate_limit and rate_limit > 0:
+        layers.append(
+            Middleware(RateLimitMiddleware, limiter=RateLimiter(max_requests=rate_limit))
+        )
+    return layers
