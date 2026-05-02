@@ -60,11 +60,11 @@ class TestNormalizeStdioBackend:
         )
         assert result["mcpServers"]["be"]["args"] == ["--foo", "bar"]
 
-    def test_extra_fields_preserved(self):
+    def test_extra_fields_preserved(self, tmp_path: Path):
         result = normalize_and_validate_config(
-            self._valid({"cwd": "/tmp", "keep_alive": True}), strict_startup=False
+            self._valid({"cwd": str(tmp_path), "keep_alive": True}), strict_startup=False
         )
-        assert result["mcpServers"]["be"]["cwd"] == "/tmp"
+        assert result["mcpServers"]["be"]["cwd"] == str(tmp_path)
         assert result["mcpServers"]["be"]["keep_alive"] is True
 
     def test_invalid_command_type(self):
@@ -155,6 +155,12 @@ class TestNormalizeHttpBackend:
             self._valid({"headers": {"Authorization": "Bearer token"}})
         )
         assert result["mcpServers"]["be"]["headers"] == {"Authorization": "Bearer token"}
+
+    def test_cwd_on_url_backend_preserved_without_validation(self):
+        result = normalize_and_validate_config(
+            self._valid({"cwd": "/some/arbitrary/path"})
+        )
+        assert result["mcpServers"]["be"]["cwd"] == "/some/arbitrary/path"
 
     def test_invalid_transport_value_rejected(self):
         with pytest.raises(ConfigError, match="unsupported transport"):
@@ -357,3 +363,52 @@ class TestEnabledFlag:
         assert len(config.disabled_backends) == 1
         assert config.disabled_backends[0].name == "off"
         assert config.disabled_backends[0].enabled is False
+
+
+# ---------------------------------------------------------------------------
+# cwd validation tests
+# ---------------------------------------------------------------------------
+
+
+class TestCwdValidation:
+    def test_valid_cwd_accepted(self, tmp_path: Path):
+        result = normalize_and_validate_config(
+            {"mcpServers": {"be": {"command": sys.executable, "cwd": str(tmp_path)}}},
+            strict_startup=False,
+        )
+        assert result["mcpServers"]["be"]["cwd"] == str(tmp_path)
+
+    def test_invalid_cwd_rejected(self):
+        with pytest.raises(ConfigError, match="must be an existing directory"):
+            normalize_and_validate_config(
+                {"mcpServers": {"be": {"command": sys.executable, "cwd": "/nonexistent/path"}}},
+                strict_startup=False,
+            )
+
+    def test_cwd_relative_path_resolved(self, tmp_path: Path, make_config_file):
+        subdir = tmp_path / "subdir"
+        subdir.mkdir()
+        config_path = make_config_file(
+            {"mcpServers": {"be": {"command": sys.executable, "cwd": "subdir"}}}
+        )
+        result = normalize_and_validate_config(
+            {"mcpServers": {"be": {"command": sys.executable, "cwd": "subdir"}}},
+            source_path=config_path,
+            strict_startup=False,
+        )
+        assert Path(result["mcpServers"]["be"]["cwd"]).is_absolute()
+        assert result["mcpServers"]["be"]["cwd"] == str(subdir)
+
+    def test_cwd_empty_string_rejected(self):
+        with pytest.raises(ConfigError, match="must be a non-empty string"):
+            normalize_and_validate_config(
+                {"mcpServers": {"be": {"command": sys.executable, "cwd": "  "}}},
+                strict_startup=False,
+            )
+
+    def test_cwd_non_string_rejected(self):
+        with pytest.raises(ConfigError, match="must be a non-empty string"):
+            normalize_and_validate_config(
+                {"mcpServers": {"be": {"command": sys.executable, "cwd": 123}}},
+                strict_startup=False,
+            )

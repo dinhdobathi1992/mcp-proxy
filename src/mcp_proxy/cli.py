@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import signal
 from pathlib import Path
 from typing import Sequence
 
@@ -10,6 +11,31 @@ from .server import run_proxy
 from .validate import ConfigError
 
 LOGGER = get_logger("cli")
+
+
+def _setup_signal_handlers() -> None:
+    """Set up graceful shutdown on SIGTERM and SIGINT-style signals.
+
+    SIGHUP is intentionally left to the lifecycle manager (which installs
+    a config-reload handler once it has a manager to reload). Until then
+    we register a temporary placeholder so an early SIGHUP does not kill
+    the process with the default terminate disposition.
+    """
+
+    def _shutdown_handler(signum: int, frame: object) -> None:
+        LOGGER.info("Received signal %s, shutting down...", signum)
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, _shutdown_handler)
+
+    if hasattr(signal, "SIGHUP"):
+        def _hup_placeholder(signum: int, frame: object) -> None:
+            LOGGER.info("Received SIGHUP before manager ready; ignoring.")
+
+        try:
+            signal.signal(signal.SIGHUP, _hup_placeholder)
+        except (ValueError, OSError):
+            pass
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -63,6 +89,56 @@ def build_parser() -> argparse.ArgumentParser:
         default=True,
         help="Fail fast for startup checks such as missing local executables.",
     )
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help="Watch config file for changes and hot-reload.",
+    )
+    parser.add_argument(
+        "--health-interval",
+        type=float,
+        default=30.0,
+        help="Health check interval in seconds.",
+    )
+    parser.add_argument(
+        "--auth-api-key",
+        default=None,
+        help="API key for HTTP front authentication.",
+    )
+    parser.add_argument(
+        "--rate-limit",
+        type=int,
+        default=100,
+        help="Requests per minute per IP (HTTP only).",
+    )
+    parser.add_argument(
+        "--tls-cert",
+        default=None,
+        help="TLS certificate path for HTTPS.",
+    )
+    parser.add_argument(
+        "--tls-key",
+        default=None,
+        help="TLS key path for HTTPS.",
+    )
+    parser.add_argument(
+        "--log-format",
+        choices=("text", "json"),
+        default="text",
+        help="Log format: text or json.",
+    )
+    parser.add_argument(
+        "--ui-mode",
+        choices=("off", "default", "advanced"),
+        default="off",
+        help="Management UI mode: off, default (read-only), or advanced (full admin).",
+    )
+    parser.add_argument(
+        "--ui-port",
+        type=int,
+        default=8080,
+        help="Management UI server port.",
+    )
     return parser
 
 
@@ -71,7 +147,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     parser = build_parser()
     args = parser.parse_args(argv)
-    configure_logging(args.log_level)
+    configure_logging(args.log_level, log_format=args.log_format)
+    _setup_signal_handlers()
 
     try:
         if args.check:
@@ -91,6 +168,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             port=args.port,
             name=args.name,
             strict_startup=args.strict_startup,
+            watch=args.watch,
+            health_interval=args.health_interval,
+            tls_cert=args.tls_cert,
+            tls_key=args.tls_key,
+            ui_mode=args.ui_mode,
+            ui_port=args.ui_port,
+            auth_api_key=args.auth_api_key,
+            rate_limit=args.rate_limit,
         )
     except ConfigError as exc:
         LOGGER.error("%s", exc)

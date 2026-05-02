@@ -158,7 +158,12 @@ class TestUnreachableHttpBackend:
             return await proxy.list_tools()
 
         tools = asyncio.run(call())
-        assert tools == [], f"Expected empty tool list for unreachable backend, got: {tools}"
+        tool_names = [t.name for t in tools]
+        # Management tools are always present
+        assert "proxy_list_backends" in tool_names
+        # Backend tools should NOT be present when backend is unreachable
+        backend_tools = [n for n in tool_names if not n.startswith("proxy_")]
+        assert backend_tools == [], f"Expected no backend tools for unreachable backend, got: {backend_tools}"
 
 
 # ---------------------------------------------------------------------------
@@ -175,3 +180,58 @@ class TestCliValidate:
         # Logged to stderr, not stdout
         captured = capsys.readouterr()
         assert captured.out == ""
+
+
+# ---------------------------------------------------------------------------
+# Graceful shutdown
+# ---------------------------------------------------------------------------
+
+
+class TestGracefulShutdown:
+    def test_sigint_returns_130(self, stdio_config, monkeypatch):
+        """Verify SIGINT is caught and returns exit code 130."""
+        from mcp_proxy.cli import main
+
+        def raise_keyboard_interrupt(*args, **kwargs):
+            raise KeyboardInterrupt()
+
+        monkeypatch.setattr("mcp_proxy.cli.run_proxy", raise_keyboard_interrupt)
+        result = main(["--config", str(stdio_config)])
+        assert result == 130
+
+
+# ---------------------------------------------------------------------------
+# New CLI flags
+# ---------------------------------------------------------------------------
+
+
+class TestNewCliFlags:
+    def test_watch_flag_accepted(self, stdio_config):
+        from mcp_proxy.cli import build_parser
+        parser = build_parser()
+        args = parser.parse_args(["--config", str(stdio_config), "--watch"])
+        assert args.watch is True
+
+    def test_health_interval_flag(self, stdio_config):
+        from mcp_proxy.cli import build_parser
+        parser = build_parser()
+        args = parser.parse_args(["--config", str(stdio_config), "--health-interval", "10"])
+        assert args.health_interval == 10.0
+
+    def test_log_format_json(self, stdio_config):
+        from mcp_proxy.cli import build_parser
+        parser = build_parser()
+        args = parser.parse_args(["--config", str(stdio_config), "--log-format", "json"])
+        assert args.log_format == "json"
+
+    def test_auth_api_key_flag(self, stdio_config):
+        from mcp_proxy.cli import build_parser
+        parser = build_parser()
+        args = parser.parse_args(["--config", str(stdio_config), "--auth-api-key", "secret"])
+        assert args.auth_api_key == "secret"
+
+    def test_rate_limit_flag(self, stdio_config):
+        from mcp_proxy.cli import build_parser
+        parser = build_parser()
+        args = parser.parse_args(["--config", str(stdio_config), "--rate-limit", "50"])
+        assert args.rate_limit == 50

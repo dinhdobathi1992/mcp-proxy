@@ -10,12 +10,12 @@ This document captures the launch contract the proxy should satisfy for the prim
 ## Shared Contract
 
 - Prefer `stdio` for local use.
-- Use one stable executable: `mcp-proxy`.
+- Use the venv binary: `.venv/bin/mcp-proxy`.
 - Do not require shell wrappers.
 - Do not emit logs to stdout.
 - Accept all runtime configuration through command args and env vars.
 
-The examples below assume `mcp-proxy` is installed on `PATH`. If it is not, replace it with an absolute interpreter path or environment-specific launcher.
+The examples below use absolute paths to the venv binary. Adjust for your installation location.
 
 ## Claude Code
 
@@ -26,7 +26,7 @@ Project-scoped example:
   "mcpServers": {
     "proxy": {
       "type": "stdio",
-      "command": "mcp-proxy",
+      "command": "/absolute/path/to/mcp-proxy/.venv/bin/mcp-proxy",
       "args": ["--config", "/absolute/path/to/servers.json"],
       "env": {}
     }
@@ -39,14 +39,14 @@ Project-scoped example:
 CLI registration example:
 
 ```bash
-codex mcp add proxy -- mcp-proxy --config /absolute/path/to/servers.json
+codex mcp add proxy -- /absolute/path/to/mcp-proxy/.venv/bin/mcp-proxy --config /absolute/path/to/servers.json
 ```
 
 Config example:
 
 ```toml
 [mcp_servers.proxy]
-command = "mcp-proxy"
+command = "/absolute/path/to/mcp-proxy/.venv/bin/mcp-proxy"
 args = ["--config", "/absolute/path/to/servers.json"]
 ```
 
@@ -59,7 +59,7 @@ Project-scoped example:
   "mcpServers": {
     "proxy": {
       "type": "stdio",
-      "command": "mcp-proxy",
+      "command": "/absolute/path/to/mcp-proxy/.venv/bin/mcp-proxy",
       "args": ["--config", "/absolute/path/to/servers.json"],
       "env": {}
     }
@@ -79,9 +79,26 @@ Local server example:
   "mcp": {
     "proxy": {
       "type": "local",
-      "command": ["mcp-proxy", "--config", "/absolute/path/to/servers.json"],
+      "command": ["/absolute/path/to/mcp-proxy/.venv/bin/mcp-proxy", "--config", "/absolute/path/to/servers.json"],
       "enabled": true
     }
   }
 }
+```
+
+## Testing the Connection
+
+After configuring your client, verify the proxy works:
+
+```bash
+# Validate config
+uv run mcp-proxy --config servers.json --check
+
+# Test HTTP mode
+uv run mcp-proxy --config servers.json --transport http --port 8001
+# Then in another terminal:
+curl -s http://127.0.0.1:8001/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
 ```

@@ -15,6 +15,7 @@ class BackendConfig:
     name: str
     transport: str
     enabled: bool
+    cwd: str | None
     raw: dict[str, Any]
 
 
@@ -47,23 +48,38 @@ def load_config(path: str | Path, *, strict_startup: bool = True) -> ProxyConfig
             f"Config file is not valid JSON: {config_path} ({exc.msg})"
         ) from exc
 
+    return build_config_from_data(
+        payload, path=config_path, strict_startup=strict_startup
+    )
+
+
+def build_config_from_data(
+    payload: dict[str, Any],
+    *,
+    path: Path,
+    strict_startup: bool = True,
+) -> ProxyConfig:
+    """Construct a ProxyConfig from an in-memory payload.
+
+    Used for runtime changes that should not (yet) touch disk.
+    """
     normalized = normalize_and_validate_config(
         payload,
-        source_path=config_path,
+        source_path=path,
         strict_startup=strict_startup,
     )
     all_backends = normalized.pop("_all_backends")
     backends = tuple(
-        BackendConfig(name=name, transport=backend["transport"], enabled=True, raw=backend)
+        BackendConfig(name=name, transport=backend["transport"], enabled=True, cwd=backend.get("cwd"), raw=backend)
         for name, backend in normalized["mcpServers"].items()
     )
     disabled_backends = tuple(
-        BackendConfig(name=name, transport=backend.get("transport", ""), enabled=False, raw=backend)
+        BackendConfig(name=name, transport=backend.get("transport", ""), enabled=False, cwd=backend.get("cwd"), raw=backend)
         for name, backend in all_backends.items()
         if not backend.get("enabled", True)
     )
     return ProxyConfig(
-        path=config_path,
+        path=path,
         data=normalized,
         backends=backends,
         disabled_backends=disabled_backends,

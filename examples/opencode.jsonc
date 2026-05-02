@@ -3,7 +3,7 @@
   "mcp": {
     "proxy": {
       "type": "local",
-      "command": ["mcp-proxy", "--config", "/absolute/path/to/servers.json"],
+      "command": ["/absolute/path/to/mcp-proxy/.venv/bin/mcp-proxy", "--config", "/absolute/path/to/servers.json"],
       "enabled": true
     }
   }
