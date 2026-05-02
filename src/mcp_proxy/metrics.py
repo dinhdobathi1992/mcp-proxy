@@ -2,19 +2,28 @@ from __future__ import annotations
 
 import statistics
 import threading
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import Any
+
+LATENCY_WINDOW = 1000
 
 
 class Metrics:
-    """Thread-safe in-memory metrics collector."""
+    """Thread-safe in-memory metrics collector.
 
-    def __init__(self) -> None:
+    Latency samples bounded per-backend to avoid unbounded memory growth.
+    """
+
+    def __init__(self, latency_window: int = LATENCY_WINDOW) -> None:
         self._lock = threading.Lock()
         self._requests_total = 0
         self._errors_total = 0
         self._per_backend: dict[str, int] = defaultdict(int)
-        self._latencies: dict[str, list[float]] = defaultdict(list)
+        self._errors_per_backend: dict[str, int] = defaultdict(int)
+        self._latency_window = latency_window
+        self._latencies: dict[str, deque[float]] = defaultdict(
+            lambda: deque(maxlen=latency_window)
+        )
 
     def record_request(self, backend_name: str, duration_ms: float, success: bool) -> None:
         with self._lock:
@@ -23,16 +32,18 @@ class Metrics:
             self._latencies[backend_name].append(duration_ms)
             if not success:
                 self._errors_total += 1
+                self._errors_per_backend[backend_name] += 1
 
     def get_metrics(self) -> dict[str, Any]:
         with self._lock:
             latency_percentiles: dict[str, dict[str, float]] = {}
             for name, values in self._latencies.items():
                 if values:
+                    snapshot = list(values)
                     latency_percentiles[name] = {
-                        "p50": statistics.median(values),
-                        "p95": self._percentile(values, 95),
-                        "p99": self._percentile(values, 99),
+                        "p50": statistics.median(snapshot),
+                        "p95": self._percentile(snapshot, 95),
+                        "p99": self._percentile(snapshot, 99),
                     }
                 else:
                     latency_percentiles[name] = {"p50": 0.0, "p95": 0.0, "p99": 0.0}
@@ -41,6 +52,7 @@ class Metrics:
                 "requests_total": self._requests_total,
                 "requests_per_backend": dict(self._per_backend),
                 "errors_total": self._errors_total,
+                "errors_per_backend": dict(self._errors_per_backend),
                 "backend_latency_ms": latency_percentiles,
             }
 

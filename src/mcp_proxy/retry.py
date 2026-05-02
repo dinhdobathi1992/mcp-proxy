@@ -26,20 +26,15 @@ def with_retry(
     if policy is None:
         policy = RetryPolicy()
 
-    last_error: Exception | None = None
     backoff = policy.initial_backoff
 
     for attempt in range(policy.max_retries + 1):
         try:
             return fn()
-        except RETRYABLE_ERRORS as exc:
-            last_error = exc
-            if attempt < policy.max_retries:
-                time.sleep(backoff)
-                backoff *= policy.backoff_multiplier
-            else:
+        except RETRYABLE_ERRORS:
+            if attempt >= policy.max_retries:
                 raise
-        except Exception:
-            raise
+            time.sleep(backoff)
+            backoff *= policy.backoff_multiplier
 
-    raise last_error  # type: ignore[misc]
+    raise RuntimeError("with_retry exited loop without returning")  # pragma: no cover

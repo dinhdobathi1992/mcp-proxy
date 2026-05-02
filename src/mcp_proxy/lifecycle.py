@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from fastmcp.server import create_proxy
+
 from .config import ProxyConfig, load_config
 from .health import HealthChecker
 from .logging import get_logger
@@ -114,8 +116,6 @@ class ProxyLifecycleManager:
             if removed:
                 LOGGER.info("Backends removed: %s", ", ".join(removed))
 
-            from fastmcp.server import create_proxy
-
             self._proxy = create_proxy(new_config.data, name=self._name)
             self._register_management_tools(self._proxy)
             self._config = new_config
@@ -123,8 +123,6 @@ class ProxyLifecycleManager:
         self._start_health_checker()
 
     def _build_proxy(self) -> None:
-        from fastmcp.server import create_proxy
-
         config = load_config(self._config_path, strict_startup=self._strict_startup)
         proxy = create_proxy(config.data, name=self._name)
         self._register_management_tools(proxy)
@@ -145,7 +143,6 @@ class ProxyLifecycleManager:
         @proxy.tool()
         async def proxy_list_backends() -> str:
             """List all backends with their health status."""
-            import json
             return json.dumps(tools.list_backends(), indent=2)
 
         @proxy.tool()
@@ -159,7 +156,6 @@ class ProxyLifecycleManager:
             persist: bool = False,
         ) -> str:
             """Add a new backend at runtime."""
-            import json
             return json.dumps(tools.add_backend(
                 name=name,
                 command=command or None,
@@ -173,37 +169,31 @@ class ProxyLifecycleManager:
         @proxy.tool()
         async def proxy_remove_backend(name: str, persist: bool = False) -> str:
             """Remove a backend at runtime."""
-            import json
             return json.dumps(tools.remove_backend(name, persist), indent=2)
 
         @proxy.tool()
         async def proxy_enable_backend(name: str, persist: bool = False) -> str:
             """Enable a disabled backend."""
-            import json
             return json.dumps(tools.enable_backend(name, persist), indent=2)
 
         @proxy.tool()
         async def proxy_disable_backend(name: str, persist: bool = False) -> str:
             """Disable an enabled backend."""
-            import json
             return json.dumps(tools.disable_backend(name, persist), indent=2)
 
         @proxy.tool()
         async def proxy_reload_config() -> str:
             """Force config reload from disk."""
-            import json
             return json.dumps(tools.reload_config(), indent=2)
 
         @proxy.tool()
         async def proxy_health_status() -> str:
             """Get health status of all backends."""
-            import json
             return json.dumps(tools.health_status(), indent=2)
 
         @proxy.tool()
         async def proxy_metrics() -> str:
             """Get proxy request metrics."""
-            import json
             return json.dumps(tools.metrics(), indent=2)
 
     def _start_health_checker(self) -> None:
@@ -259,7 +249,7 @@ class ProxyLifecycleManager:
                     "enabled": b.enabled,
                     "health": status,
                     "requests": metrics.get("requests_per_backend", {}).get(b.name, 0),
-                    "errors": 0,
+                    "errors": metrics.get("errors_per_backend", {}).get(b.name, 0),
                     "latency_p50": metrics.get("backend_latency_ms", {}).get(b.name, {}).get("p50", 0),
                     "latency_p95": metrics.get("backend_latency_ms", {}).get(b.name, {}).get("p95", 0),
                     "latency_p99": metrics.get("backend_latency_ms", {}).get(b.name, {}).get("p99", 0),
@@ -336,6 +326,7 @@ class ProxyLifecycleManager:
             class ConfigHandler(FileSystemEventHandler):
                 def __init__(self, manager: ProxyLifecycleManager):
                     self._manager = manager
+                    self._config_path = manager._config_path
                     self._last_reload = 0.0
 
                 def on_modified(self, event):
