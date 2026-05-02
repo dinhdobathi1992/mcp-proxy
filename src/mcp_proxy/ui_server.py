@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hmac
 import json
+import os
 import struct
 from pathlib import Path
 from typing import Any
@@ -52,12 +53,21 @@ class UIServer:
             return None
 
     def write_command(self, command: dict[str, Any]) -> None:
-        """Append a command to the JSONL command file."""
+        """Append a command to the JSONL command file.
+
+        Uses ``os.O_APPEND`` with a single ``write`` so concurrent appenders
+        do not interleave bytes. POSIX guarantees atomicity for writes
+        smaller than ``PIPE_BUF`` on append-mode descriptors.
+        """
         if self._command_path is None:
             raise ValueError("No command path configured")
-        line = json.dumps(command) + "\n"
-        with open(self._command_path, "a", encoding="utf-8") as f:
-            f.write(line)
+        payload = (json.dumps(command) + "\n").encode("utf-8")
+        flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
+        fd = os.open(str(self._command_path), flags, 0o600)
+        try:
+            os.write(fd, payload)
+        finally:
+            os.close(fd)
 
     def run(self) -> None:
         """Start the UI server (blocking)."""

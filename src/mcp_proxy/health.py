@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 import enum
+import shutil
 import threading
+import urllib.error
+import urllib.request
+from pathlib import Path
 from typing import Any, Callable
+
+DEFAULT_HTTP_TIMEOUT_SEC = 5.0
 
 
 class HealthStatus(enum.Enum):
@@ -24,14 +30,17 @@ class HealthChecker:
         self._interval = interval
         self._on_status_change = on_status_change
         self._status: dict[str, HealthStatus] = {}
+        self._status_lock = threading.Lock()
         self._task: threading.Thread | None = None
         self._stop_event = threading.Event()
 
     def get_status(self, backend_name: str) -> HealthStatus:
-        return self._status.get(backend_name, HealthStatus.UNKNOWN)
+        with self._status_lock:
+            return self._status.get(backend_name, HealthStatus.UNKNOWN)
 
     def get_all_status(self) -> dict[str, HealthStatus]:
-        return dict(self._status)
+        with self._status_lock:
+            return dict(self._status)
 
     def start(self) -> None:
         if self._task is not None:
@@ -55,10 +64,12 @@ class HealthChecker:
     def _check_all(self) -> None:
         for backend in self._backends:
             name = backend.get("name", "unknown")
-            old_status = self._status.get(name, HealthStatus.UNKNOWN)
             new_status = self._ping_backend(backend)
-            self._status[name] = new_status
-            if old_status != new_status and self._on_status_change:
+            with self._status_lock:
+                old_status = self._status.get(name, HealthStatus.UNKNOWN)
+                self._status[name] = new_status
+                changed = old_status != new_status
+            if changed and self._on_status_change:
                 self._on_status_change(name, new_status)
 
     def _ping_backend(self, backend: dict[str, Any]) -> HealthStatus:
@@ -66,8 +77,7 @@ class HealthChecker:
             transport = backend.get("transport", "stdio")
             if transport == "stdio":
                 return self._ping_stdio(backend)
-            else:
-                return self._ping_http(backend)
+            return self._ping_http(backend)
         except Exception:
             return HealthStatus.UNHEALTHY
 
@@ -77,30 +87,24 @@ class HealthChecker:
         FastMCP manages stdio subprocesses internally. We can't access the
         process object directly, so we verify the command exists on the system.
         """
-        import shutil
-
         command = backend.get("command", "")
         if not command:
             return HealthStatus.UNKNOWN
-        # Check if command exists on PATH or as absolute path
         if shutil.which(command):
             return HealthStatus.HEALTHY
-        # Check absolute path
-        from pathlib import Path
-        if Path(command).is_file() and Path(command).exists():
+        path = Path(command)
+        if path.is_absolute() and path.is_file():
             return HealthStatus.HEALTHY
         return HealthStatus.UNHEALTHY
 
     def _ping_http(self, backend: dict[str, Any]) -> HealthStatus:
-        import urllib.request
-        import urllib.error
-
         url = backend.get("url", "")
         if not url:
             return HealthStatus.UNKNOWN
+        timeout = backend.get("timeout") or DEFAULT_HTTP_TIMEOUT_SEC
         try:
             req = urllib.request.Request(url, method="GET")
-            with urllib.request.urlopen(req, timeout=5.0):
+            with urllib.request.urlopen(req, timeout=timeout):
                 return HealthStatus.HEALTHY
         except (urllib.error.URLError, OSError, TimeoutError):
             return HealthStatus.UNHEALTHY

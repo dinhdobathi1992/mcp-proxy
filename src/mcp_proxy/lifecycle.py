@@ -3,16 +3,20 @@ from __future__ import annotations
 import json
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from fastmcp.server import create_proxy
 
-from .config import ProxyConfig, load_config
+from .config import ProxyConfig, build_config_from_data, load_config
 from .health import HealthChecker
 from .logging import get_logger
+from .management import ManagementTools
 from .metrics import Metrics
 from .retry import RetryPolicy
+from .ui_reader import CommandReader
+from .ui_writer import StatusWriter
 from .validate import ConfigError
 
 LOGGER = get_logger("lifecycle")
@@ -114,7 +118,26 @@ class ProxyLifecycleManager:
         except ConfigError as exc:
             LOGGER.warning("Config reload failed, keeping current: %s", exc)
             return
+        self._apply_config(new_config)
 
+    def apply_inline_data(self, data: dict[str, Any]) -> None:
+        """Apply a config payload at runtime without reading from disk.
+
+        Used by management tools when ``persist=False`` so callers can mutate
+        the running proxy state without touching the on-disk config file.
+        """
+        try:
+            new_config = build_config_from_data(
+                data,
+                path=self._config_path,
+                strict_startup=self._strict_startup,
+            )
+        except ConfigError as exc:
+            LOGGER.warning("Inline config apply failed, keeping current: %s", exc)
+            raise
+        self._apply_config(new_config)
+
+    def _apply_config(self, new_config: ProxyConfig) -> None:
         with self._lock:
             old_backend_names = {b.name for b in self._config.backends} if self._config else set()
             new_backend_names = {b.name for b in new_config.backends}
@@ -146,8 +169,6 @@ class ProxyLifecycleManager:
 
     def _register_management_tools(self, proxy: Any) -> None:
         """Register proxy_* management tools on the FastMCP proxy."""
-        from .management import ManagementTools
-
         tools = ManagementTools(self)
 
         @proxy.tool()
@@ -229,8 +250,6 @@ class ProxyLifecycleManager:
         LOGGER.info("Backend '%s' health changed to %s", backend_name, status.value)
 
     def _start_ui_writer(self) -> None:
-        from .ui_writer import StatusWriter
-
         self._ui_writer = StatusWriter(self._ui_status_path)
         self._ui_thread = threading.Thread(target=self._ui_write_loop, daemon=True)
         self._ui_thread.start()
@@ -265,8 +284,6 @@ class ProxyLifecycleManager:
                     "latency_p99": metrics.get("backend_latency_ms", {}).get(b.name, {}).get("p99", 0),
                 })
 
-        from datetime import datetime, timezone
-
         self._ui_writer.write({
             "timestamp": datetime.now(tz=timezone.utc).isoformat(),
             "proxy_name": self._name,
@@ -281,8 +298,6 @@ class ProxyLifecycleManager:
         })
 
     def _start_ui_reader(self) -> None:
-        from .ui_reader import CommandReader
-
         self._ui_reader = CommandReader(self._ui_command_path)
         self._ui_command_thread = threading.Thread(target=self._ui_command_loop, daemon=True)
         self._ui_command_thread.start()
@@ -303,8 +318,6 @@ class ProxyLifecycleManager:
                 LOGGER.warning("Failed to execute UI command %s: %s", cmd.get("id"), exc)
 
     def _execute_ui_command(self, cmd: dict) -> None:
-        from .management import ManagementTools
-
         tools = ManagementTools(self)
         action = cmd.get("action")
         args = cmd.get("args", {})

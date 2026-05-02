@@ -25,16 +25,17 @@ def with_retry(
     """Execute fn with retry on transient errors."""
     if policy is None:
         policy = RetryPolicy()
+    if policy.max_retries < 0:
+        raise ValueError("max_retries must be non-negative")
 
     backoff = policy.initial_backoff
-
-    for attempt in range(policy.max_retries + 1):
+    attempt = 0
+    while True:
         try:
             return fn()
         except RETRYABLE_ERRORS:
             if attempt >= policy.max_retries:
                 raise
+            attempt += 1
             time.sleep(backoff)
             backoff *= policy.backoff_multiplier
-
-    raise RuntimeError("with_retry exited loop without returning")  # pragma: no cover

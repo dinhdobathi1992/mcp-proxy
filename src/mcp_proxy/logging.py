@@ -32,14 +32,11 @@ class JSONFormatter(logging.Formatter):
 def configure_logging(
     level: str = DEFAULT_LOG_LEVEL, log_format: str = "text"
 ) -> logging.Logger:
-    """Configure stderr-only logging for MCP-safe process startup.
+    """Configure stderr-only logging for the ``mcp_proxy`` package.
 
-    Args:
-        level: Log level name (e.g. "INFO", "WARNING").
-        log_format: ``"text"`` for plain text, ``"json"`` for structured JSON.
-
-    Logs must go to stderr so that stdout stays clean for MCP protocol
-    communication when the proxy runs in stdio mode.
+    Configures only the package logger (not the root logger) so embedders
+    that already set up their own logging are not disturbed. Logs go to
+    stderr to keep stdout clean for MCP stdio transport.
     """
     if log_format == "json":
         formatter: logging.Formatter = JSONFormatter()
@@ -49,12 +46,14 @@ def configure_logging(
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(formatter)
 
-    root = logging.getLogger()
-    root.setLevel(getattr(logging, level.upper(), logging.INFO))
-    root.handlers.clear()
-    root.addHandler(handler)
+    package_logger = logging.getLogger(LOGGER_NAME)
+    package_logger.setLevel(getattr(logging, level.upper(), logging.INFO))
+    for existing in list(package_logger.handlers):
+        package_logger.removeHandler(existing)
+    package_logger.addHandler(handler)
+    package_logger.propagate = False
 
-    return logging.getLogger(LOGGER_NAME)
+    return package_logger
 
 
 def get_logger(name: str | None = None) -> logging.Logger:

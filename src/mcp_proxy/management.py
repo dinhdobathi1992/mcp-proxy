@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from .config import load_config
 from .health import HealthStatus
-from .lifecycle import ProxyLifecycleManager
 from .logging import get_logger
-from .validate import ConfigError
+
+if TYPE_CHECKING:
+    from .lifecycle import ProxyLifecycleManager
 
 LOGGER = get_logger("management")
 
@@ -16,7 +18,7 @@ LOGGER = get_logger("management")
 class ManagementTools:
     """MCP tools for runtime proxy management."""
 
-    def __init__(self, lifecycle: ProxyLifecycleManager) -> None:
+    def __init__(self, lifecycle: "ProxyLifecycleManager") -> None:
         self._lifecycle = lifecycle
 
     def list_backends(self) -> list[dict[str, Any]]:
@@ -76,9 +78,8 @@ class ManagementTools:
         new_servers[name] = entry
         new_data["mcpServers"] = new_servers
 
-        self._write_config(config.path, new_data)
-        self._lifecycle.rebuild_proxy()
-        return {"success": True, "message": f"Backend '{name}' added"}
+        self._apply_change(config.path, new_data, persist=persist)
+        return {"success": True, "message": f"Backend '{name}' added", "persisted": persist}
 
     def remove_backend(self, name: str, persist: bool = False) -> dict[str, Any]:
         config = self._lifecycle.get_config()
@@ -95,9 +96,8 @@ class ManagementTools:
             return {"success": False, "error": "Cannot remove last backend"}
 
         new_data["mcpServers"] = new_servers
-        self._write_config(config.path, new_data)
-        self._lifecycle.rebuild_proxy()
-        return {"success": True, "message": f"Backend '{name}' removed"}
+        self._apply_change(config.path, new_data, persist=persist)
+        return {"success": True, "message": f"Backend '{name}' removed", "persisted": persist}
 
     def enable_backend(self, name: str, persist: bool = False) -> dict[str, Any]:
         return self._set_backend_enabled(name, True, persist)
@@ -150,16 +150,46 @@ class ManagementTools:
         new_servers[name] = entry
         new_data["mcpServers"] = new_servers
 
-        self._write_config(config.path, new_data)
-        self._lifecycle.rebuild_proxy()
+        self._apply_change(config.path, new_data, persist=persist)
         action = "enabled" if enabled else "disabled"
-        return {"success": True, "message": f"Backend '{name}' {action}"}
+        return {"success": True, "message": f"Backend '{name}' {action}", "persisted": persist}
+
+    def _apply_change(
+        self, config_path: Path, data: dict[str, Any], *, persist: bool
+    ) -> None:
+        """Apply a config mutation, optionally persisting it to disk.
+
+        ``persist=True`` writes the new config atomically and triggers a
+        normal disk reload. ``persist=False`` keeps the on-disk file untouched
+        and applies the change in memory only — it will revert on the next
+        disk-driven reload.
+        """
+        if persist:
+            self._write_config(config_path, data)
+            self._lifecycle.rebuild_proxy()
+        else:
+            self._lifecycle.apply_inline_data(data)
 
     def _write_config(self, config_path: Path, data: dict[str, Any]) -> None:
         try:
-            config_path.write_text(
-                json.dumps(data, indent=2) + "\n", encoding="utf-8"
+            payload = json.dumps(data, indent=2) + "\n"
+            tmp_fd, tmp_name = tempfile.mkstemp(
+                prefix=config_path.name + ".",
+                suffix=".tmp",
+                dir=str(config_path.parent),
             )
+            try:
+                with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+                    fh.write(payload)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                os.replace(tmp_name, config_path)
+            except Exception:
+                try:
+                    os.unlink(tmp_name)
+                except OSError:
+                    pass
+                raise
             LOGGER.info("Config written to %s", config_path)
         except OSError as exc:
             LOGGER.warning("Failed to write config: %s", exc)

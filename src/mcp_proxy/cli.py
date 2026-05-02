@@ -14,13 +14,28 @@ LOGGER = get_logger("cli")
 
 
 def _setup_signal_handlers() -> None:
-    """Set up graceful shutdown on SIGTERM."""
+    """Set up graceful shutdown on SIGTERM and SIGINT-style signals.
 
-    def _handler(signum: int, frame: object) -> None:
+    SIGHUP is intentionally left to the lifecycle manager (which installs
+    a config-reload handler once it has a manager to reload). Until then
+    we register a temporary placeholder so an early SIGHUP does not kill
+    the process with the default terminate disposition.
+    """
+
+    def _shutdown_handler(signum: int, frame: object) -> None:
         LOGGER.info("Received signal %s, shutting down...", signum)
         raise SystemExit(0)
 
-    signal.signal(signal.SIGTERM, _handler)
+    signal.signal(signal.SIGTERM, _shutdown_handler)
+
+    if hasattr(signal, "SIGHUP"):
+        def _hup_placeholder(signum: int, frame: object) -> None:
+            LOGGER.info("Received SIGHUP before manager ready; ignoring.")
+
+        try:
+            signal.signal(signal.SIGHUP, _hup_placeholder)
+        except (ValueError, OSError):
+            pass
 
 
 def build_parser() -> argparse.ArgumentParser:
