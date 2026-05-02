@@ -72,12 +72,24 @@ class HealthChecker:
             return HealthStatus.UNHEALTHY
 
     def _ping_stdio(self, backend: dict[str, Any]) -> HealthStatus:
-        proc = backend.get("_process")
-        if proc is None:
+        """Check stdio backend health.
+
+        FastMCP manages stdio subprocesses internally. We can't access the
+        process object directly, so we verify the command exists on the system.
+        """
+        import shutil
+
+        command = backend.get("command", "")
+        if not command:
             return HealthStatus.UNKNOWN
-        if proc.poll() is not None:
-            return HealthStatus.UNHEALTHY
-        return HealthStatus.HEALTHY
+        # Check if command exists on PATH or as absolute path
+        if shutil.which(command):
+            return HealthStatus.HEALTHY
+        # Check absolute path
+        from pathlib import Path
+        if Path(command).is_file() and Path(command).exists():
+            return HealthStatus.HEALTHY
+        return HealthStatus.UNHEALTHY
 
     def _ping_http(self, backend: dict[str, Any]) -> HealthStatus:
         import urllib.request
