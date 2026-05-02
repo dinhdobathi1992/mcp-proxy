@@ -40,6 +40,27 @@ class ManagementTools:
             })
         return result
 
+    def list_tools(self, backend_name: str | None = None) -> dict[str, Any]:
+        """List tools exposed by backends.
+        
+        If backend_name is provided, returns tools for that backend only.
+        Otherwise returns tools for all backends.
+        """
+        config = self._lifecycle.get_config()
+        if not config:
+            return {"tools": {}}
+        
+        tools: dict[str, list[str]] = {}
+        for b in config.backends:
+            b_tools = b.raw.get("tools", [])
+            if backend_name is None or b.name == backend_name:
+                tools[b.name] = b_tools
+        
+        if backend_name and backend_name not in tools:
+            return {"success": False, "error": f"Backend '{backend_name}' not found"}
+        
+        return {"tools": tools}
+
     def add_backend(
         self,
         name: str,

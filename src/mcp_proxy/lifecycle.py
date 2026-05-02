@@ -217,6 +217,11 @@ class ProxyLifecycleManager:
             return json.dumps(tools.list_backends(), indent=2)
 
         @proxy.tool()
+        async def proxy_list_tools(backend_name: str | None = None) -> str:
+            """List tools exposed by backends."""
+            return json.dumps(tools.list_tools(backend_name), indent=2)
+
+        @proxy.tool()
         async def proxy_add_backend(
             name: str,
             command: str = "",
@@ -322,6 +327,7 @@ class ProxyLifecycleManager:
                     "latency_p50": metrics.get("backend_latency_ms", {}).get(b.name, {}).get("p50", 0),
                     "latency_p95": metrics.get("backend_latency_ms", {}).get(b.name, {}).get("p95", 0),
                     "latency_p99": metrics.get("backend_latency_ms", {}).get(b.name, {}).get("p99", 0),
+                    "tools": b.raw.get("tools", []),
                 })
 
         self._ui_writer.write({

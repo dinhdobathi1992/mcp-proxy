@@ -21,13 +21,22 @@ const lastUpdate = computed(() => {
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-mark">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 17l8 4 8-4M4 12l8 4 8-4M12 3L4 7l8 4 8-4-8-4z"/>
+          <svg width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M16 2L28 8.5V23.5L16 30L4 23.5V8.5L16 2Z" fill="url(#hex-grad)"/>
+            <path d="M16 2L28 8.5V23.5L16 30L4 23.5V8.5L16 2Z" stroke="rgba(255,255,255,0.3)" stroke-width="0.5" fill="none"/>
+            <path d="M10 16L14 18.5V22.5L18 20L22 22.5V18.5L18 16L14 18.5V14.5L10 16Z" fill="rgba(255,255,255,0.9)"/>
+            <path d="M22 10.5L18 13V16L22 18.5" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <path d="M10 21.5L14 19V16L10 13.5" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <defs>
+              <linearGradient id="hex-grad" x1="4" y1="2" x2="28" y2="30" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#7c5cff"/>
+                <stop offset="1" stop-color="#00d4ff"/>
+              </linearGradient>
+            </defs>
           </svg>
         </div>
         <div class="brand-text">
           <div class="brand-name">{{ proxyName }}</div>
-          <div class="brand-sub">control plane</div>
         </div>
       </div>
 
@@ -203,6 +212,7 @@ code { font-family: var(--font-mono); }
   padding: 1.25rem 0.875rem;
   border-right: 1px solid var(--border-1);
   background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
+  z-index: 10;
 }
 
 .brand { display: flex; align-items: center; gap: 0.65rem; padding: 0.25rem 0.5rem 1.5rem; }
@@ -215,8 +225,8 @@ code { font-family: var(--font-mono); }
   box-shadow: 0 4px 16px rgba(124, 92, 255, 0.4), inset 0 1px 0 rgba(255,255,255,0.25);
 }
 .brand-text { line-height: 1.15; }
-.brand-name { font-weight: 600; font-size: 0.95rem; letter-spacing: -0.01em; }
-.brand-sub { font-size: 0.7rem; color: var(--text-4); text-transform: uppercase; letter-spacing: 0.08em; }
+.brand-name { font-weight: 700; font-size: 1rem; letter-spacing: -0.02em; background: var(--grad-accent); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.brand-sub { display: none; }
 
 .nav { display: flex; flex-direction: column; gap: 2px; }
 .nav-item {
