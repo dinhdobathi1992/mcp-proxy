@@ -29,6 +29,7 @@ def _start_ui_server(ui_port: int, status_path: str, command_path: str | None = 
             cmd.extend(["--command-path", command_path])
         proc = subprocess.Popen(
             cmd,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
         )
