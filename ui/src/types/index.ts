@@ -8,6 +8,7 @@ export interface BackendStatus {
   latency_p50: number
   latency_p95: number
   latency_p99: number
+  tools?: string[]
 }
 
 export interface StatusSnapshot {

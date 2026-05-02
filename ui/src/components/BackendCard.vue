@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { BackendStatus } from '../types'
 
 const props = defineProps<{ backend: BackendStatus }>()
@@ -17,6 +17,9 @@ const transportIcon = computed(() => {
   if (t.includes('sse')) return 'sse'
   return 'generic'
 })
+
+const tools = computed(() => props.backend.tools ?? [])
+const toolsOpen = ref(false)
 
 function fmtMs(n: number) {
   if (n < 1) return n.toFixed(2)
@@ -88,6 +91,44 @@ function fmtMs(n: number) {
           <div class="lat-cell">
             <span class="lat-tag">p99</span>
             <span class="lat-val">{{ fmtMs(backend.latency_p99) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="tools">
+        <button
+          class="tools-toggle"
+          type="button"
+          :aria-expanded="toolsOpen"
+          :aria-controls="`tools-${backend.name}`"
+          :disabled="tools.length === 0"
+          @click="toolsOpen = !toolsOpen"
+        >
+          <svg
+            class="chev"
+            :class="{ open: toolsOpen && tools.length > 0 }"
+            width="12" height="12" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="2.4"
+            stroke-linecap="round" stroke-linejoin="round"
+          >
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+          <span class="tools-label">Tools</span>
+          <span class="tools-count">{{ tools.length }}</span>
+        </button>
+        <div
+          v-if="toolsOpen || tools.length === 0"
+          :id="`tools-${backend.name}`"
+          class="tools-panel"
+        >
+          <div v-if="tools.length === 0" class="tools-empty">No tools registered</div>
+          <div v-else-if="toolsOpen" class="tools-list">
+            <span
+              v-for="t in tools"
+              :key="t"
+              class="tool-pill"
+              :title="t"
+            >{{ t }}</span>
           </div>
         </div>
       </div>
@@ -237,5 +278,67 @@ function fmtMs(n: number) {
 .lat-val {
   font-family: var(--font-mono); font-size: 0.95rem; font-weight: 500;
   color: var(--text-1); font-variant-numeric: tabular-nums;
+}
+
+/* Tools disclosure */
+.tools { display: flex; flex-direction: column; gap: 0.5rem; }
+.tools-toggle {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  background: var(--surface-glass);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  color: var(--text-3);
+  font-size: 0.72rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+.tools-toggle:not(:disabled):hover {
+  background: var(--accent-soft);
+  color: var(--text-1);
+  border-color: rgba(124, 92, 255, 0.25);
+}
+.tools-toggle:disabled { cursor: default; opacity: 0.7; }
+.tools-toggle .chev { transition: transform 160ms ease; }
+.tools-toggle .chev.open { transform: rotate(90deg); }
+.tools-label { flex: 1; text-align: left; }
+.tools-count {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-glass);
+  border: 1px solid var(--border-1);
+  color: var(--text-2);
+}
+
+.tools-panel {
+  padding: 0.55rem 0.65rem;
+  background: var(--surface-glass);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+}
+.tools-empty {
+  font-size: 0.75rem; color: var(--text-4);
+  text-align: center; padding: 0.15rem 0;
+}
+.tools-list {
+  display: flex; flex-wrap: wrap; gap: 0.3rem;
+}
+.tool-pill {
+  display: inline-flex; align-items: center;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(124, 92, 255, 0.22);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

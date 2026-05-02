@@ -238,7 +238,7 @@ const sortedBackends = computed(() => {
 /* Section ------------------------------------------------ */
 .section-head {
   display: flex; align-items: center; justify-content: space-between;
-  margin: 0.5rem 0 1rem;
+  margin: 1.75rem 0 1rem;
 }
 .section-head h2 {
   font-size: 0.95rem; font-weight: 600; letter-spacing: -0.01em;
