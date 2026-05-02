@@ -61,7 +61,30 @@ class TestManagementTools:
         assert "echo" not in [b.name for b in mgr.get_config().backends]
         mgr.stop()
 
-    def test_disable_backend(self, stdio_config: Path):
+    def test_disable_backend(self, make_config_file, python_exe, backend_stdio_path):
+        config = make_config_file({
+            "mcpServers": {
+                "echo": {
+                    "command": python_exe,
+                    "args": [str(backend_stdio_path)],
+                },
+                "echo2": {
+                    "command": python_exe,
+                    "args": [str(backend_stdio_path)],
+                },
+            }
+        })
+        from mcp_proxy.lifecycle import ProxyLifecycleManager
+
+        mgr = ProxyLifecycleManager(config, name="test", watch=False)
+        mgr.start()
+        tools = ManagementTools(mgr)
+
+        result = tools.disable_backend("echo2")
+        assert result["success"] is True
+        mgr.stop()
+
+    def test_disable_last_enabled_rejected(self, stdio_config: Path):
         from mcp_proxy.lifecycle import ProxyLifecycleManager
 
         mgr = ProxyLifecycleManager(stdio_config, name="test", watch=False)
@@ -69,7 +92,8 @@ class TestManagementTools:
         tools = ManagementTools(mgr)
 
         result = tools.disable_backend("echo")
-        assert result["success"] is True
+        assert result["success"] is False
+        assert "last enabled" in result["error"]
         mgr.stop()
 
     def test_enable_backend(self, make_config_file, python_exe, backend_stdio_path):

@@ -41,7 +41,11 @@ class TestCommandReader:
         path.write_text(json.dumps(cmd) + "\n")
         reader = CommandReader(path)
         reader.read_commands()
-        assert path.read_text() == ""
+        # Reader rotates the file via os.replace and unlinks the consumed
+        # copy, so the original path is gone until the next writer recreates it.
+        assert not path.exists()
+        consume = path.with_suffix(path.suffix + ".consume")
+        assert not consume.exists()
 
     def test_read_skips_invalid_json(self, tmp_path: Path):
         path = tmp_path / "commands.jsonl"

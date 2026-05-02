@@ -13,7 +13,7 @@ from .config import ProxyConfig, build_config_from_data, load_config
 from .health import HealthChecker
 from .logging import get_logger
 from .management import ManagementTools
-from .metrics import Metrics
+from .metrics import Metrics, MetricsMiddleware
 from .retry import RetryPolicy
 from .ui_reader import CommandReader
 from .ui_writer import StatusWriter
@@ -139,6 +139,7 @@ class ProxyLifecycleManager:
 
     def _apply_config(self, new_config: ProxyConfig) -> None:
         with self._lock:
+            old_proxy = self._proxy
             old_backend_names = {b.name for b in self._config.backends} if self._config else set()
             new_backend_names = {b.name for b in new_config.backends}
             added = new_backend_names - old_backend_names
@@ -149,16 +150,20 @@ class ProxyLifecycleManager:
             if removed:
                 LOGGER.info("Backends removed: %s", ", ".join(removed))
 
-            self._proxy = create_proxy(new_config.data, name=self._name)
-            self._register_management_tools(self._proxy)
+            new_proxy = create_proxy(new_config.data, name=self._name)
+            self._register_management_tools(new_proxy)
+            self._install_metrics_middleware(new_proxy)
+            self._proxy = new_proxy
             self._config = new_config
 
+        self._dispose_proxy(old_proxy)
         self._start_health_checker()
 
     def _build_proxy(self) -> None:
         config = load_config(self._config_path, strict_startup=self._strict_startup)
         proxy = create_proxy(config.data, name=self._name)
         self._register_management_tools(proxy)
+        self._install_metrics_middleware(proxy)
 
         with self._lock:
             self._proxy = proxy
@@ -166,6 +171,41 @@ class ProxyLifecycleManager:
 
         backend_names = ", ".join(b.name for b in config.backends)
         LOGGER.info("Proxy started with %d backend(s): %s", len(config.backends), backend_names)
+
+    def _install_metrics_middleware(self, proxy: Any) -> None:
+        """Install metrics middleware to record per-backend request stats."""
+        proxy.add_middleware(
+            MetricsMiddleware(self._metrics, lambda: self._current_backend_names())
+        )
+
+    def _current_backend_names(self) -> list[str]:
+        with self._lock:
+            cfg = self._config
+        if cfg is None:
+            return []
+        return [b.name for b in cfg.backends]
+
+    def _dispose_proxy(self, proxy: Any) -> None:
+        """Best-effort cleanup of a replaced proxy.
+
+        FastMCP exposes no close hook, so we drop in-memory caches that hold
+        references to backend metadata and let GC reclaim the rest.
+        """
+        if proxy is None:
+            return
+        try:
+            providers = getattr(proxy, "_providers", None) or []
+            for prov in providers:
+                for attr in (
+                    "_tools_cache",
+                    "_resources_cache",
+                    "_templates_cache",
+                    "_prompts_cache",
+                ):
+                    if hasattr(prov, attr):
+                        setattr(prov, attr, None)
+        except Exception as exc:  # pragma: no cover - defensive
+            LOGGER.debug("Old proxy cleanup error: %s", exc)
 
     def _register_management_tools(self, proxy: Any) -> None:
         """Register proxy_* management tools on the FastMCP proxy."""

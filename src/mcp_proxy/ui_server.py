@@ -83,13 +83,23 @@ class UIServer:
         web.run_app(app, host=self._host, port=self._port, print=None)
 
     def _check_auth(self, request: web.Request) -> bool:
+        """Validate Bearer token from header or ``?token=`` query param.
+
+        Browsers cannot set custom headers on WebSocket handshake requests,
+        so we accept the token via query string as a fallback. Both paths
+        use constant-time comparison.
+        """
         if self._api_token is None:
             return True
         header = request.headers.get("Authorization", "")
         parts = header.split(" ", 1)
-        if len(parts) != 2 or parts[0] != "Bearer":
-            return False
-        return hmac.compare_digest(parts[1], self._api_token)
+        if len(parts) == 2 and parts[0] == "Bearer":
+            if hmac.compare_digest(parts[1], self._api_token):
+                return True
+        token = request.query.get("token")
+        if token and hmac.compare_digest(token, self._api_token):
+            return True
+        return False
 
     async def _handle_index(self, request: web.Request) -> web.StreamResponse:
         return web.FileResponse(self._ui_dir / "index.html")

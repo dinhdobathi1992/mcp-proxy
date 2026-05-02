@@ -210,14 +210,19 @@ def run_proxy(
 def _build_http_middleware(
     auth_api_key: str | None, rate_limit: int
 ) -> list[Any]:
-    """Build the Starlette middleware stack for the front HTTP transport."""
+    """Build the Starlette middleware stack for the front HTTP transport.
+
+    Rate limit is the outermost layer so unauthenticated floods get rejected
+    before the auth check; auth runs inside it on requests that pass the
+    limit.
+    """
     from starlette.middleware import Middleware
 
     layers: list[Any] = []
-    if auth_api_key:
-        layers.append(Middleware(AuthMiddleware, auth=APIKeyAuth(auth_api_key)))
     if rate_limit and rate_limit > 0:
         layers.append(
             Middleware(RateLimitMiddleware, limiter=RateLimiter(max_requests=rate_limit))
         )
+    if auth_api_key:
+        layers.append(Middleware(AuthMiddleware, auth=APIKeyAuth(auth_api_key)))
     return layers

@@ -150,6 +150,17 @@ class ManagementTools:
         new_servers[name] = entry
         new_data["mcpServers"] = new_servers
 
+        if not enabled:
+            remaining = sum(
+                1 for n, b in new_servers.items()
+                if b.get("enabled", True)
+            )
+            if remaining == 0:
+                return {
+                    "success": False,
+                    "error": "Cannot disable last enabled backend",
+                }
+
         self._apply_change(config.path, new_data, persist=persist)
         action = "enabled" if enabled else "disabled"
         return {"success": True, "message": f"Backend '{name}' {action}", "persisted": persist}

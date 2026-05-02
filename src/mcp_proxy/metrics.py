@@ -2,8 +2,14 @@ from __future__ import annotations
 
 import statistics
 import threading
+import time
 from collections import defaultdict, deque
-from typing import Any
+from typing import Any, Callable
+
+try:
+    from fastmcp.server.middleware import Middleware
+except ImportError:  # pragma: no cover - fastmcp always present at runtime
+    Middleware = object  # type: ignore[assignment,misc]
 
 LATENCY_WINDOW = 1000
 
@@ -65,3 +71,46 @@ class Metrics:
         if c >= len(sorted_vals):
             return sorted_vals[-1]
         return sorted_vals[f] + (k - f) * (sorted_vals[c] - sorted_vals[f])
+
+
+class MetricsMiddleware(Middleware):
+    """FastMCP middleware that records per-backend request metrics.
+
+    Resolves the backend by matching the called tool name against the
+    configured backend prefixes. With a single backend FastMCP does not
+    add a prefix, so we attribute calls directly.
+    """
+
+    def __init__(
+        self,
+        metrics: Metrics,
+        backends: Callable[[], list[str]],
+    ) -> None:
+        super().__init__()
+        self._metrics = metrics
+        self._backends = backends
+
+    async def on_call_tool(self, context: Any, call_next: Any) -> Any:
+        start = time.monotonic()
+        success = True
+        try:
+            return await call_next(context)
+        except Exception:
+            success = False
+            raise
+        finally:
+            duration_ms = (time.monotonic() - start) * 1000.0
+            tool_name = getattr(getattr(context, "message", None), "name", "") or ""
+            backend = self._resolve_backend(tool_name)
+            self._metrics.record_request(backend, duration_ms, success)
+
+    def _resolve_backend(self, tool_name: str) -> str:
+        names = self._backends()
+        if not names:
+            return "unknown"
+        if len(names) == 1:
+            return names[0]
+        for name in names:
+            if tool_name == name or tool_name.startswith(name + "_"):
+                return name
+        return "unknown"

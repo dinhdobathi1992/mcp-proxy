@@ -139,7 +139,7 @@ class TestProxyLifecycleManagerUI:
         )
         mgr.start()
 
-        with patch("mcp_proxy.management.ManagementTools") as mock_cls:
+        with patch("mcp_proxy.lifecycle.ManagementTools") as mock_cls:
             mock_tools = MagicMock()
             mock_cls.return_value = mock_tools
             mock_tools.enable_backend.return_value = {"status": "ok"}
@@ -163,7 +163,7 @@ class TestProxyLifecycleManagerUI:
         )
         mgr.start()
 
-        with patch("mcp_proxy.management.ManagementTools") as mock_cls:
+        with patch("mcp_proxy.lifecycle.ManagementTools") as mock_cls:
             mock_tools = MagicMock()
             mock_cls.return_value = mock_tools
             mock_tools.reload_config.return_value = {"status": "ok"}
